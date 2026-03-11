@@ -1,5 +1,8 @@
 import os
 import torch
+import torchaudio
+import soundfile as sf
+import numpy as np
 from TTS.api import TTS
 
 # PyTorch 2.6+ changed torch.load default to weights_only=True, which breaks TTS.
@@ -9,6 +12,45 @@ def safe_load(*args, **kwargs):
     kwargs['weights_only'] = False
     return _original_load(*args, **kwargs)
 torch.load = safe_load
+
+# OPTION 3: Bypass torchaudio's broken torchcodec dependency by monkey-patching it with soundfile
+def sf_load(uri, frame_offset=0, num_frames=-1, normalize=True, channels_first=True, **kwargs):
+    # soundfile.read returns (data, samplerate)
+    # data is [time, channel] by default
+    # If num_frames is -1, read all frames
+    data, samplerate = sf.read(
+        uri, 
+        start=frame_offset, 
+        frames=num_frames if num_frames != -1 else -1, 
+        always_2d=True,
+        dtype='float32'
+    )
+    
+    # If not normalize, we would usually want int16 but torchaudio.load 
+    # typically handles normalization if normalize=True. Let's force float32.
+    tensor = torch.from_numpy(data)
+    if channels_first:
+        tensor = tensor.t()
+    
+    if not normalize:
+        # If torchaudio expects unnormalized (which is rare for its load func),
+        # we would need to scale it back, but usually normalize=True is default.
+        pass
+
+    return tensor, samplerate
+
+def sf_save(uri, src, sample_rate, channels_first=True, **kwargs):
+    if torch.is_tensor(src):
+        data = src.cpu().numpy()
+    else:
+        data = src
+    if channels_first and data.ndim > 1:
+        data = data.T
+    sf.write(uri, data, sample_rate)
+
+# Apply the patches
+torchaudio.load = sf_load
+torchaudio.save = sf_save
 
 class XTTSv2Service:
     def __init__(self):

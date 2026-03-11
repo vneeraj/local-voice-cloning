@@ -20,6 +20,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultAudio = document.getElementById('result-audio');
     const downloadBtn = document.getElementById('download-btn');
 
+    const fileInput = document.getElementById('file-input');
+    const youtubeInput = document.getElementById('youtube-input');
+    const youtubeBtn = document.getElementById('youtube-btn');
+
+    // Tab Logic
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.add('hidden'));
+            
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.target).classList.remove('hidden');
+        });
+    });
+
     // State
     let mediaRecorder;
     let audioChunks = [];
@@ -128,6 +146,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
         animationId = requestAnimationFrame(updateVisualizer);
     }
+
+    // --- File Upload Logic ---
+    fileInput.addEventListener('change', async (e) => {
+        if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            const audioUrl = URL.createObjectURL(file);
+            referenceAudio.src = audioUrl;
+            referencePlayerContainer.classList.remove('hidden');
+            await uploadReferenceAudio(file);
+        }
+    });
+
+    // --- YouTube Logic ---
+    youtubeBtn.addEventListener('click', async () => {
+        const url = youtubeInput.value.trim();
+        if (!url) {
+            alert("Please enter a YouTube URL");
+            return;
+        }
+
+        youtubeBtn.disabled = true;
+        recordingStatus.textContent = 'Downloading YouTube...';
+        recordingStatus.style.background = 'rgba(245, 158, 11, 0.2)';
+        recordingStatus.style.color = '#f59e0b';
+        recordingStatus.className = 'status-badge';
+
+        const formData = new FormData();
+        formData.append('url', url);
+
+        try {
+            const response = await fetch(`${API_BASE}/upload_youtube`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || "Upload failed");
+            }
+
+            const data = await response.json();
+            referenceId = data.reference_id;
+            
+            referencePlayerContainer.classList.add('hidden'); // We don't have local preview right away for YT
+            
+            recordingStatus.textContent = 'Ready ✅';
+            recordingStatus.className = 'status-badge active';
+            
+            generationStatus.textContent = 'Ready';
+            generationStatus.className = 'status-badge active';
+            
+            scriptInput.disabled = false;
+            generateBtn.disabled = false;
+            generateBtn.classList.remove('disabled');
+
+        } catch (err) {
+            console.error(err);
+            alert("Error processing YouTube link: " + err.message);
+            recordingStatus.textContent = 'Failed';
+            recordingStatus.style.background = 'rgba(239, 68, 68, 0.2)';
+            recordingStatus.style.color = '#ef4444';
+        } finally {
+            youtubeBtn.disabled = false;
+        }
+    });
 
     // --- Backend API Integration ---
     async function uploadReferenceAudio(blob) {

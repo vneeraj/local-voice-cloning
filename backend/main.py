@@ -6,11 +6,11 @@ import os
 import uuid
 from tts_service import XTTSv2Service
 from typing import Optional
-from pydub import AudioSegment
-import imageio_ffmpeg as ffmpeg
+import subprocess
+import imageio_ffmpeg
 
-# Configure pydub to use the static ffmpeg binary
-AudioSegment.converter = ffmpeg.get_ffmpeg_exe()
+# Get the static ffmpeg binary path
+ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
 app = FastAPI(title="Local Voice Cloning API")
 
@@ -47,15 +47,87 @@ async def upload_reference(audio: UploadFile = File(...)):
     with open(raw_file_path, "wb") as buffer:
         shutil.copyfileobj(audio.file, buffer)
         
-    # Now sanitize and standard-convert it to PCM WAV using pydub
+    # Now sanitize and standard-convert it to PCM WAV using ffmpeg directly
     final_wav_path = os.path.join(UPLOAD_DIR, f"{file_id}_ref.wav")
     try:
-        audio_segment = AudioSegment.from_file(raw_file_path)
-        # Force 16-bit PCM, mono, 22050Hz (Standard clean audio for Coqui)
-        audio_segment = audio_segment.set_frame_rate(22050).set_channels(1).set_sample_width(2)
-        audio_segment.export(final_wav_path, format="wav")
+        import logging
+        logging.error(f"Executing ffmpeg: {ffmpeg_exe}")
+        logging.error(f"Exists: {os.path.exists(ffmpeg_exe)}")
+        cmd = [
+            ffmpeg_exe,
+            "-y",
+            "-i", raw_file_path,
+            "-ar", "22050",
+            "-ac", "1",
+            "-sample_fmt", "s16",
+            final_wav_path
+        ]
+        logging.error(f"Cmd: {cmd}")
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        raise HTTPException(status_code=500, detail=f"Failed to process audio format: (make sure it's valid audio). Error: {err_msg}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process audio format: (make sure it's valid audio). Error: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to process audio format. Error: {str(e)}")
+        
+    return {"status": "success", "reference_id": file_id, "file_path": final_wav_path}
+
+@app.post("/upload_youtube")
+async def upload_youtube(url: str = Form(...)):
+    """Ingest reference audio from a YouTube video link."""
+    file_id = str(uuid.uuid4())
+    raw_file_template = os.path.join(UPLOAD_DIR, f"{file_id}_raw.%(ext)s")
+    
+    try:
+        import yt_dlp
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': raw_file_template,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'wav',
+            }],
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            # The postprocessor will output a .wav file.
+            # We can find it by looking for file_id.
+    except Exception as e:
+        import traceback
+        import logging
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Failed to download from YouTube. Error: {str(e)}")
+
+    # Locate the extracted wav file
+    downloaded_wav = None
+    for filename in os.listdir(UPLOAD_DIR):
+        if filename.startswith(f"{file_id}_raw") and filename.endswith(".wav"):
+            downloaded_wav = os.path.join(UPLOAD_DIR, filename)
+            break
+            
+    if not downloaded_wav:
+        raise HTTPException(status_code=500, detail="Failed to locate downloaded YouTube audio.")
+
+    # Now standardize it using ffmpeg
+    final_wav_path = os.path.join(UPLOAD_DIR, f"{file_id}_ref.wav")
+    try:
+        cmd: list[str] = [
+            str(ffmpeg_exe),
+            "-y",
+            "-i", str(downloaded_wav),
+            "-ar", "22050",
+            "-ac", "1",
+            "-sample_fmt", "s16",
+            final_wav_path
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
+        raise HTTPException(status_code=500, detail=f"Failed to process YouTube audio: {err_msg}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process YouTube audio. Error: {str(e)}")
         
     return {"status": "success", "reference_id": file_id, "file_path": final_wav_path}
 
@@ -66,12 +138,15 @@ async def generate_speech(
 ):
     """Generate speech using the uploaded reference voice."""
     
-    # Find the reference file
-    reference_path = None
-    for filename in os.listdir(UPLOAD_DIR):
-        if filename.startswith(reference_id):
-            reference_path = os.path.join(UPLOAD_DIR, filename)
-            break
+    # Find the processed reference file (the _ref.wav version)
+    reference_path = os.path.join(UPLOAD_DIR, f"{reference_id}_ref.wav")
+    if not os.path.exists(reference_path):
+        # Fallback: look for any file with this reference_id
+        reference_path = None
+        for filename in os.listdir(UPLOAD_DIR):
+            if filename.startswith(reference_id) and filename.endswith("_ref.wav"):
+                reference_path = os.path.join(UPLOAD_DIR, filename)
+                break
             
     if not reference_path:
         raise HTTPException(status_code=404, detail="Reference voice not found")
@@ -99,4 +174,4 @@ async def generate_speech(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
