@@ -24,6 +24,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const youtubeInput = document.getElementById('youtube-input');
     const youtubeBtn = document.getElementById('youtube-btn');
 
+    // AI Voice Studio Elements
+    const pitchSlider = document.getElementById('pitch-slider');
+    const speedSlider = document.getElementById('speed-slider');
+    const energySlider = document.getElementById('energy-slider');
+    const intensitySlider = document.getElementById('intensity-slider');
+    const emotionSelect = document.getElementById('emotion-select');
+    
+    const pitchVal = document.getElementById('pitch-val');
+    const speedVal = document.getElementById('speed-val');
+    const energyVal = document.getElementById('energy-val');
+    const intensityVal = document.getElementById('intensity-val');
+
+    const previewBtn = document.getElementById('preview-btn');
+    const aiGenerateBtn = document.getElementById('ai-generate-btn');
+    const aiScriptInput = document.getElementById('ai-script-input');
+    const aiLoader = document.getElementById('ai-loader');
+    const aiResultContainer = document.getElementById('ai-result-container');
+    const aiResultAudio = document.getElementById('ai-result-audio');
+    const aiDownloadBtn = document.getElementById('ai-download-btn');
+
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    const loadProfilesBtn = document.getElementById('load-profiles-btn');
+
+    // Main Navigation Logic
+    const navBtns = document.querySelectorAll('.nav-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    navBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            navBtns.forEach(b => b.classList.remove('active'));
+            tabPanes.forEach(p => p.classList.remove('active'));
+            
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+    });
+
     // Tab Logic
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -315,6 +352,127 @@ document.addEventListener('DOMContentLoaded', () => {
             generateBtn.classList.remove('disabled');
             scriptInput.disabled = false;
             loader.classList.add('hidden');
+        }
+    });
+
+    // --- AI Voice Studio Logic ---
+    
+    // Slider Label Updates
+    const updateLabels = () => {
+        pitchVal.textContent = parseFloat(pitchSlider.value) > 0.7 ? "High" : (parseFloat(pitchSlider.value) < 0.3 ? "Deep" : "Natural");
+        speedVal.textContent = parseFloat(speedSlider.value) > 0.7 ? "Fast" : (parseFloat(speedSlider.value) < 0.3 ? "Slow" : "Normal");
+        energyVal.textContent = parseFloat(energySlider.value) > 0.7 ? "Energetic" : (parseFloat(energySlider.value) < 0.3 ? "Soft" : "Neutral");
+        intensityVal.textContent = parseFloat(intensitySlider.value) > 0.8 ? "Extreme" : (parseFloat(intensitySlider.value) < 0.3 ? "Mild" : "Moderate");
+    };
+
+    [pitchSlider, speedSlider, energySlider, intensitySlider].forEach(s => s.addEventListener('input', updateLabels));
+    updateLabels();
+
+    async function generateAI(is_preview = false) {
+        const text = is_preview ? "This is a quick preview of your custom AI voice." : aiScriptInput.value.trim();
+        if (!text) {
+            alert("Please enter a script.");
+            return;
+        }
+
+        const params = {
+            pitch: parseFloat(pitchSlider.value),
+            speed: parseFloat(speedSlider.value),
+            energy: parseFloat(energySlider.value),
+            intensity: parseFloat(intensitySlider.value),
+            emotion: emotionSelect.value
+        };
+
+        const targetBtn = is_preview ? previewBtn : aiGenerateBtn;
+        const targetLoader = is_preview ? null : aiLoader;
+        
+        targetBtn.disabled = true;
+        if (targetLoader) targetLoader.classList.remove('hidden');
+        aiResultContainer.classList.add('hidden');
+
+        const formData = new FormData();
+        formData.append('text', text);
+        formData.append('parameters_json', JSON.stringify(params));
+
+        try {
+            const response = await fetch(`${API_BASE}/generate_ai_voice`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error("Generation failed");
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+
+            aiResultAudio.src = url;
+            aiDownloadBtn.href = url;
+            aiDownloadBtn.download = `ai_voice_${Date.now()}.wav`;
+            
+            aiResultContainer.classList.remove('hidden');
+            aiResultAudio.play();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            targetBtn.disabled = false;
+            if (targetLoader) targetLoader.classList.add('hidden');
+        }
+    }
+
+    previewBtn.addEventListener('click', () => generateAI(true));
+    aiGenerateBtn.addEventListener('click', () => generateAI(false));
+
+    saveProfileBtn.addEventListener('click', async () => {
+        const name = prompt("Enter a name for this voice profile:");
+        if (!name) return;
+
+        const profile = {
+            name: name,
+            parameters: {
+                pitch: parseFloat(pitchSlider.value),
+                speed: parseFloat(speedSlider.value),
+                energy: parseFloat(energySlider.value),
+                intensity: parseFloat(intensitySlider.value),
+                emotion: emotionSelect.value
+            }
+        };
+
+        try {
+            const res = await fetch(`${API_BASE}/save_profile`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(profile)
+            });
+            if (res.ok) alert("Profile saved!");
+        } catch (err) {
+            alert("Save failed");
+        }
+    });
+
+    loadProfilesBtn.addEventListener('click', async () => {
+        try {
+            const res = await fetch(`${API_BASE}/list_profiles`);
+            const profiles = await res.json();
+            if (profiles.length === 0) {
+                alert("No profiles found.");
+                return;
+            }
+            
+            const profileNames = profiles.map(p => p.name).join("\n");
+            const choice = prompt(`Available profiles:\n${profileNames}\n\nEnter name to load:`);
+            const selected = profiles.find(p => p.name === choice);
+            
+            if (selected) {
+                pitchSlider.value = selected.parameters.pitch;
+                speedSlider.value = selected.parameters.speed;
+                energySlider.value = selected.parameters.energy;
+                intensitySlider.value = selected.parameters.intensity;
+                emotionSelect.value = selected.parameters.emotion;
+                updateLabels();
+                alert(`Loaded profile: ${selected.name}`);
+            }
+        } catch (err) {
+            alert("Load failed");
         }
     });
 });

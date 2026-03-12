@@ -4,8 +4,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
 import uuid
-from tts_service import XTTSv2Service
-from typing import Optional
+import json
+from qwen_tts_service import Qwen3TTSService
+from typing import Optional, List
+from pydantic import BaseModel
 import subprocess
 import imageio_ffmpeg
 
@@ -23,14 +25,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Directories for temp files
+# Directories for temp files and profiles
 UPLOAD_DIR = "uploads"
 OUTPUT_DIR = "outputs"
+PROFILES_DIR = "profiles"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(PROFILES_DIR, exist_ok=True)
 
-# Initialize TTS Service
-tts_service = XTTSv2Service()
+# Pydantic models for AI Voice Studio
+class VoiceParameters(BaseModel):
+    pitch: float
+    speed: float
+    energy: float
+    emotion: str
+    intensity: float
+    gender_hint: Optional[str] = "unspecified"
+
+class VoiceProfile(BaseModel):
+    name: str
+    parameters: VoiceParameters
+    instruction: Optional[str] = ""
+
+# Initialize TTS Service (Qwen3-TTS 0.6B)
+tts_service = Qwen3TTSService()
 
 @app.post("/upload_reference")
 async def upload_reference(audio: UploadFile = File(...)):
@@ -53,10 +71,18 @@ async def upload_reference(audio: UploadFile = File(...)):
         import logging
         logging.error(f"Executing ffmpeg: {ffmpeg_exe}")
         logging.error(f"Exists: {os.path.exists(ffmpeg_exe)}")
+        # Use filters to clean up the reference audio:
+        # 1. Highpass at 80Hz to remove rumble
+        # 2. Lowpass at 8000Hz to remove high-frequency hiss
+        # 3. Loudnorm (EBU R128) to stabilize volume
+        # 4. Silenceremove to trim long silent gaps
+        filters = "highpass=f=80, lowpass=f=8000, loudnorm, silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-50dB"
+        
         cmd = [
             ffmpeg_exe,
             "-y",
             "-i", raw_file_path,
+            "-af", filters,
             "-ar", "22050",
             "-ac", "1",
             "-sample_fmt", "s16",
@@ -83,12 +109,15 @@ async def upload_youtube(url: str = Form(...)):
     try:
         import yt_dlp
         ydl_opts = {
+            'ffmpeg_location': ffmpeg_exe,
             'format': 'bestaudio/best',
             'outtmpl': raw_file_template,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'wav',
             }],
+            'quiet': True,
+            'no_warnings': True,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -113,10 +142,13 @@ async def upload_youtube(url: str = Form(...)):
     # Now standardize it using ffmpeg
     final_wav_path = os.path.join(UPLOAD_DIR, f"{file_id}_ref.wav")
     try:
+        # Clean and standardize using ffmpeg filters for quality
+        filters = "highpass=f=80, lowpass=f=8000, loudnorm, silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-50dB"
         cmd: list[str] = [
             str(ffmpeg_exe),
             "-y",
             "-i", str(downloaded_wav),
+            "-af", filters,
             "-ar", "22050",
             "-ac", "1",
             "-sample_fmt", "s16",
@@ -156,11 +188,10 @@ async def generate_speech(
     output_path = os.path.join(OUTPUT_DIR, f"{output_id}.wav")
     
     try:
-        # Generate the audio blockingly (in production you'd use a background task or queue)
-        tts_service.generate_speech(
+        # Generate the audio blockingly
+        tts_service.generate_cloned_speech(
             text=text,
-            speaker_wav=reference_path,
-            language="en",
+            reference_wav=reference_path,
             output_path=output_path
         )
     except Exception as e:
@@ -171,6 +202,66 @@ async def generate_speech(
         media_type="audio/wav",
         filename=f"generated_{output_id}.wav"
     )
+
+@app.post("/generate_ai_voice")
+async def generate_ai_voice(
+    text: str = Form(...),
+    parameters_json: str = Form(...) # JSON string containing the VoiceParameters
+):
+    """Generate speech using tuned AI voice parameters."""
+    try:
+        params_dict = json.loads(parameters_json)
+        # Validate using Pydantic
+        params = VoiceParameters(**params_dict)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid parameters JSON: {str(e)}")
+
+    output_id = str(uuid.uuid4())
+    output_path = os.path.join(OUTPUT_DIR, f"{output_id}.wav")
+    
+    try:
+        tts_service.generate_ai_voice(
+            text=text,
+            params=params.dict(),
+            output_path=output_path
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    return FileResponse(
+        path=output_path, 
+        media_type="audio/wav",
+        filename=f"ai_voice_{output_id}.wav"
+    )
+
+@app.post("/save_profile")
+async def save_profile(profile: VoiceProfile):
+    """Save an AI voice profile as a JSON file."""
+    safe_name = "".join([c for c in profile.name if c.isalnum() or c in (' ', '_', '-')]).rstrip()
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid profile name")
+    
+    file_path = os.path.join(PROFILES_DIR, f"{safe_name}.json")
+    try:
+        with open(file_path, "w") as f:
+            json.dump(profile.dict(), f, indent=2)
+        return {"status": "success", "profile_name": profile.name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/list_profiles")
+async def list_profiles():
+    """List all saved AI voice profiles."""
+    profiles = []
+    for filename in os.listdir(PROFILES_DIR):
+        if filename.endswith(".json"):
+            try:
+                with open(os.path.join(PROFILES_DIR, filename), "r") as f:
+                    data = json.load(f)
+                    profiles.append(data)
+            except:
+                pass
+    return profiles
 
 if __name__ == "__main__":
     import uvicorn

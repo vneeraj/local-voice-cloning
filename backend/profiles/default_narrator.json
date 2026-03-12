@@ -1,0 +1,12 @@
+{
+  "name": "Default Narrator",
+  "parameters": {
+    "pitch": 0.5,
+    "speed": 0.5,
+    "energy": 0.5,
+    "emotion": "Professional",
+    "intensity": 0.5,
+    "gender_hint": "unspecified"
+  },
+  "instruction": "Speak in a clear, neutral, and professional tone."
+}
