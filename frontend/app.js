@@ -47,6 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveProfileBtn = document.getElementById('save-profile-btn');
     const loadProfilesBtn = document.getElementById('load-profiles-btn');
 
+    const engineSelect = document.getElementById('engine-select');
+
     // Main Navigation Logic
     const navBtns = document.querySelectorAll('.nav-btn');
     const tabPanes = document.querySelectorAll('.tab-pane');
@@ -312,6 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('text', text);
         formData.append('reference_id', referenceId);
+        formData.append('engine', engineSelect.value);
 
         try {
             const response = await fetch(`${API_BASE}/generate`, {
@@ -393,6 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('text', text);
         formData.append('parameters_json', JSON.stringify(params));
+        formData.append('engine', engineSelect.value);
 
         try {
             const response = await fetch(`${API_BASE}/generate_ai_voice`, {

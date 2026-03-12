@@ -128,6 +128,33 @@ h1 {
 .subtitle {
     color: var(--text-secondary);
     font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+}
+
+.engine-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.5rem 1.5rem;
+    border-radius: 50px;
+    border: 1px solid var(--panel-border);
+}
+
+.engine-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.small-select {
+    background-color: transparent;
+    border: none;
+    padding: 0.2rem 2rem 0.2rem 0.5rem;
+    font-size: 0.9rem;
+    width: auto;
+    font-weight: 600;
+    color: var(--primary-light);
 }
 
 /* Main Navigation */

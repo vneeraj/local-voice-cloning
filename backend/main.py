@@ -5,10 +5,11 @@ import shutil
 import os
 import uuid
 import json
-from qwen_tts_service import Qwen3TTSService
+from tts_service import CombinedTTSService
 from typing import Optional, List
 from pydantic import BaseModel
 import subprocess
+from fastapi.staticfiles import StaticFiles
 import imageio_ffmpeg
 
 # Get the static ffmpeg binary path
@@ -24,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static files from the frontend directory
+frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
 # Directories for temp files and profiles
 UPLOAD_DIR = "uploads"
@@ -47,8 +51,8 @@ class VoiceProfile(BaseModel):
     parameters: VoiceParameters
     instruction: Optional[str] = ""
 
-# Initialize TTS Service (Qwen3-TTS 0.6B)
-tts_service = Qwen3TTSService()
+# Initialize TTS Service (Combined: Qwen3-TTS & Kokoro)
+tts_service = CombinedTTSService()
 
 @app.post("/upload_reference")
 async def upload_reference(audio: UploadFile = File(...)):
@@ -166,7 +170,8 @@ async def upload_youtube(url: str = Form(...)):
 @app.post("/generate")
 async def generate_speech(
     text: str = Form(...),
-    reference_id: str = Form(...)
+    reference_id: str = Form(...),
+    engine: str = Form("qwen")
 ):
     """Generate speech using the uploaded reference voice."""
     
@@ -192,7 +197,8 @@ async def generate_speech(
         tts_service.generate_cloned_speech(
             text=text,
             reference_wav=reference_path,
-            output_path=output_path
+            output_path=output_path,
+            engine=engine
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -206,7 +212,8 @@ async def generate_speech(
 @app.post("/generate_ai_voice")
 async def generate_ai_voice(
     text: str = Form(...),
-    parameters_json: str = Form(...) # JSON string containing the VoiceParameters
+    parameters_json: str = Form(...), # JSON string containing the VoiceParameters
+    engine: str = Form("qwen")
 ):
     """Generate speech using tuned AI voice parameters."""
     try:
@@ -223,7 +230,8 @@ async def generate_ai_voice(
         tts_service.generate_ai_voice(
             text=text,
             params=params.dict(),
-            output_path=output_path
+            output_path=output_path,
+            engine=engine
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -262,6 +270,8 @@ async def list_profiles():
             except:
                 pass
     return profiles
+
+app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn

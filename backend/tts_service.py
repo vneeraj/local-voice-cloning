@@ -4,6 +4,10 @@ import torchaudio
 import numpy as np
 import soundfile as sf
 from qwen_tts import Qwen3TTSModel, Qwen3TTSTokenizer
+try:
+    from kokoro import KPipeline
+except ImportError:
+    KPipeline = None
 
 # Standard monkey-patch for torchaudio since torchcodec is broken on this system
 def sf_load(uri, frame_offset=0, num_frames=-1, normalize=True, channels_first=True, **kwargs):
@@ -150,3 +154,79 @@ class Qwen3TTSService:
         except Exception as e:
             print(f"Error in AI Voice generation: {e}")
             raise
+
+class KokoroTTSService:
+    def __init__(self):
+        if KPipeline is None:
+            raise ImportError("kokoro library not installed.")
+        print("Initializing Kokoro TTS...")
+        # lang_code 'a' for American English
+        self.pipeline = KPipeline(lang_code='a')
+        self.sample_rate = 24000
+
+    def generate_ai_voice(self, text: str, params: dict, output_path: str):
+        """Generates speech using Kokoro TTS."""
+        speed_slider = params.get("speed", 0.5)
+        # Map slider 0.5 to 1.0, 0 to 0.5, 1.0 to 2.0
+        if speed_slider <= 0.5:
+            kokoro_speed = 0.5 + speed_slider # 0.5 to 1.0
+        else:
+            kokoro_speed = 1.0 + (speed_slider - 0.5) * 2 # 1.0 to 2.0
+            
+        # Voice mapping based on emotion or gender if we want to be fancy,
+        # otherwise default to a high-quality one.
+        # Kokoro voices: af_heart, af_bella, af_nicole, af_sky, am_adam, am_michael, etc.
+        voice = "af_heart"
+        emotion = params.get("emotion", "Professional").lower()
+        if "energetic" in emotion: voice = "af_sky"
+        elif "soft" in emotion: voice = "af_nicole"
+        
+        print(f"Generating Kokoro AI Voice with voice={voice}, speed={kokoro_speed}")
+        
+        try:
+            generator = self.pipeline(
+                text, voice=voice,
+                speed=kokoro_speed, split_pattern=r'\n+'
+            )
+            
+            audio_segments = []
+            for _, _, audio in generator:
+                audio_segments.append(audio)
+            
+            if not audio_segments:
+                raise ValueError("Kokoro failed to generate audio segments.")
+                
+            combined_audio = np.concatenate(audio_segments)
+            sf.write(output_path, combined_audio, self.sample_rate)
+            print(f"Generated Kokoro voice to {output_path}")
+        except Exception as e:
+            print(f"Error in Kokoro generation: {e}")
+            raise
+
+class CombinedTTSService:
+    def __init__(self):
+        self.qwen = None
+        self.kokoro = None
+        
+    def get_qwen(self):
+        if self.qwen is None:
+            self.qwen = Qwen3TTSService()
+        return self.qwen
+    
+    def get_kokoro(self):
+        if self.kokoro is None:
+            self.kokoro = KokoroTTSService()
+        return self.kokoro
+
+    def generate_cloned_speech(self, text: str, reference_wav: str, output_path: str, engine: str = "qwen"):
+        if engine == "kokoro":
+            # Kokoro doesn't support zero-shot cloning in the same way Qwen does,
+            # it uses fixed voices. For now, fallback to Qwen or use a default Kokoro voice.
+            print("Kokoro selected for cloning. Fallback to Qwen for actual cloning.")
+            return self.get_qwen().generate_cloned_speech(text, reference_wav, output_path)
+        return self.get_qwen().generate_cloned_speech(text, reference_wav, output_path)
+
+    def generate_ai_voice(self, text: str, params: dict, output_path: str, engine: str = "qwen"):
+        if engine == "kokoro":
+            return self.get_kokoro().generate_ai_voice(text, params, output_path)
+        return self.get_qwen().generate_ai_voice(text, params, output_path)
