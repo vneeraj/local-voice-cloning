@@ -1,3 +1,30 @@
-backend/venv/*
-backend/outputs/*
-backend/uploads/*
+# Python
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Tools (downloaded by setup.sh — not committed)
+tools/
+
+# Data directories (user-generated content)
+backend/data/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Old backend (superseded)
+old/
+backend/venv/
+backend/outputs/
+backend/uploads/

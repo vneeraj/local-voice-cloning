@@ -1,11 +1,30 @@
-fastapi==0.109.2
-uvicorn==0.27.1
-TTS>=0.22.0
-torch
-python-multipart
-pydantic
-pydub
-imageio-ffmpeg
-yt-dlp
-kokoro
-soundfile
+# VoiceForge backend dependencies
+# Install with: uv pip install -r requirements.txt
+
+# --- Web framework ---
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# --- TTS & ML ---
+# PyTorch: install the MPS-compatible build for macOS arm64.
+# setup.sh installs this via the official macOS wheel index.
+torch==2.6.0
+torchaudio==2.6.0
+f5-tts==1.1.4
+
+# --- Audio processing ---
+imageio-ffmpeg==0.6.0
+soundfile==0.13.1
+
+# --- YouTube ingestion ---
+yt-dlp==2025.3.31
+
+# --- Testing ---
+pytest==8.3.5
+pytest-asyncio==0.26.0
+pytest-cov==6.1.0
+httpx==0.28.1
+
+# --- Linting ---
+ruff==0.11.4
