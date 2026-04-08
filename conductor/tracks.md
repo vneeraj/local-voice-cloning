@@ -5,7 +5,9 @@
 
 ## Active Tracks
 
-_None — run `/conductor:newTrack` to create the next track._
+| ID | Title | Status | Path |
+|---|---|---|---|
+| 02-frontend | React Frontend | 🔵 Planned | [tracks/02-frontend/](./tracks/02-frontend/index.md) |
 
 ## Completed Tracks
 

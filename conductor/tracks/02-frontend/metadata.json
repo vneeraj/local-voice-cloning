@@ -1,0 +1,11 @@
+{
+  "id": "02-frontend",
+  "title": "React Frontend",
+  "status": "pending",
+  "created_at": "2026-04-08",
+  "updated_at": "2026-04-08",
+  "phase_current": 0,
+  "phase_total": 6,
+  "checkpoint_sha": null,
+  "tags": ["frontend", "react", "ui", "vite", "typescript"]
+}
