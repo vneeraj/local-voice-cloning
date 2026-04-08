@@ -50,6 +50,6 @@
 
 - [x] Run `ruff check` and fix all linting issues
 - [x] Run `pytest --cov=app --cov-report=term-missing`; achieve >80% coverage (achieved 93%) `0801287`
-- [ ] Verify `setup.sh` runs cleanly on Mac host (manual — run `./setup.sh` on M5 Mac)
-- [ ] Verify `start.sh` / Ctrl-C exits without zombie processes (manual — run on M5 Mac)
-- [ ] Update `conductor/tracks.md` status to 🟢 Complete
+- [x] Verify `setup.sh` runs cleanly on Mac host (confirmed by user)
+- [x] Verify `start.sh` / Ctrl-C exits without zombie processes (confirmed by user)
+- [x] Update `conductor/tracks.md` status to 🟢 Complete

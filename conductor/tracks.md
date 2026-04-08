@@ -5,13 +5,13 @@
 
 ## Active Tracks
 
-| ID | Title | Status | Path |
-|---|---|---|---|
-| 01-foundation | Project Foundation & Backend Core | 🟡 In Progress | [tracks/01-foundation/](./tracks/01-foundation/index.md) |
+_None — run `/conductor:newTrack` to create the next track._
 
 ## Completed Tracks
 
-_None yet._
+| ID | Title | Path |
+|---|---|---|
+| 01-foundation | Project Foundation & Backend Core | [tracks/01-foundation/](./tracks/01-foundation/index.md) |
 
 ## Track Status Legend
 
