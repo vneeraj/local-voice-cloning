@@ -1,0 +1,11 @@
+{
+  "id": "01-foundation",
+  "title": "Project Foundation & Backend Core",
+  "status": "in_progress",
+  "created_at": "2026-04-08",
+  "updated_at": "2026-04-08",
+  "phase_current": 1,
+  "phase_total": 5,
+  "checkpoint_sha": null,
+  "tags": ["backend", "infrastructure", "f5-tts", "fastapi"]
+}
