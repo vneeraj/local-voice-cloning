@@ -23,6 +23,9 @@ backend/data/
 .vscode/
 .idea/
 
+# Claude local settings
+.claude/
+
 # Old backend (superseded)
 old/
 backend/venv/
